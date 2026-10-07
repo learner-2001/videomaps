@@ -14,6 +14,7 @@ TL = json.load(open(os.path.join(ROOT, "audio", "timeline.json")))
 W, H, FPS, TOTAL = TL["w"], TL["h"], TL["fps"], TL["total"]
 NFR = TL["frames"]
 ML = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl"
+JQ = int(os.environ.get("JQ", "93"))
 CAST = ["BRA", "ARG", "BOL", "COL", "GUY", "PRY", "PER", "SUR", "URY", "VEN", "FRA", "CHL", "ECU"]
 CREDITS = ("Boundaries: geoBoundaries (CC-BY 4.0) · Natural Earth · Flags: flagcdn (MIT) · "
            "Photography: Wikimedia Commons (CC) · Figures: World Bank / USDA WASDE")
@@ -150,10 +151,11 @@ def style_and_layers():
                 seen.add(it["file"])
                 lid = f"ov-{sid}-{it['iso']}-{it['kind'].replace('_', '-')}"
                 srcs[lid] = {"type": "image", "url": "over/" + it["file"], "coordinates": it["coords"]}
-                op = 0.74 if it["kind"].startswith("photo") else 0.86
+                op = 0.84 if it["kind"].startswith("photo") else 0.88
                 lays.append({"id": lid, "type": "raster", "source": lid,
                              "paint": {"raster-opacity": 0.0, "raster-fade-duration": 0,
-                                       "raster-resampling": "linear"}})
+                                       "raster-resampling": "linear",
+                                       "raster-opacity-transition": {"duration": 0, "delay": 0}}})
                 laymap.setdefault(str(sid), []).append([lid, op])
     return {"version": 8, "sources": srcs, "layers": lays}, laymap
 
@@ -194,11 +196,13 @@ window.seek = (t) => new Promise(res => {
   const kk = ease(clamp((k - 0.06) / 0.88, 0, 1));
   map.jumpTo({center:[s.c0[0] + (s.c1[0]-s.c0[0])*kk, s.c0[1] + (s.c1[1]-s.c0[1])*kk],
               zoom: s.z0 + (s.z1 - s.z0)*kk, bearing: s.bear0 + (s.bear1 - s.bear0)*kk, pitch: 0});
+  const prev = i > 0 ? SCN[i-1].i : -1;
   for (const sid in LAY) for (const [lid, op] of LAY[sid]) {
     if (!map.getLayer(lid)) continue;
     let a = 0;
-    if (sid === String(s.i)) a = op * clamp((k - 0.05) / 0.22, 0, 1);
-    else if (i === SCN.length - 1) a = op * 0.5 * clamp((k - 0.1) / 0.3, 0, 1);   // finale: all overlays back on
+    if (sid === String(s.i)) a = op * clamp((k - 0.04) / 0.20, 0, 1);
+    else if (sid === String(prev)) a = op * (1 - clamp(k / 0.20, 0, 1));            // crossfade out
+    else if (i === SCN.length - 1) a = op * 0.55 * clamp((k - 0.10) / 0.30, 0, 1);  // finale: everything back on
     map.setPaintProperty(lid, 'raster-opacity', a);
   }
   const local = t - s.start, rev = clamp((local - 0.30) / 0.95, 0, 1);
