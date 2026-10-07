@@ -26,8 +26,11 @@ jobs:
       WORKERS: "4"
       CHUNK: "190"
       JQ: "93"
-      RELOAD_EVERY: "400"
-      PRESET: "veryfast"
+      RELOAD_EVERY: "1000"
+      PRESET: "ultrafast"      # 4 x264 instances were stealing the browsers' cores
+      CRF: "19"
+      RENDER_FPS: "24"         # 1447 frames instead of 1808, identical duration
+      SLOW_WARN_MS: "2600"
       PROBE_FRAMES: "48"
       # Internal render size: 648x1152 upscaled to 1080x1920 with Lanczos at encode.
       # ~2.8x cheaper than native 1080p and still far sharper than the 576x1024 reference.

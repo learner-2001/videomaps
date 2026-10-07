@@ -11,8 +11,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 A, OUT = os.path.join(ROOT, "assets"), os.path.join(ROOT, "out")
 OVER = os.path.join(OUT, "over")
 TL = json.load(open(os.path.join(ROOT, "audio", "timeline.json")))
-W, H, FPS, TOTAL = TL["w"], TL["h"], TL["fps"], TL["total"]
-NFR = TL["frames"]
+W, H, TOTAL = TL["w"], TL["h"], TL["total"]
+# RENDER_FPS < the timeline fps cuts the frame count proportionally (same duration, and the
+# camera moves are slow enough that 24 fps looks identical here) - measured, not assumed:
+# the CI probe showed ~1.25 s/frame at DSF 0.6, so frames are the whole budget.
+FPS = float(os.environ.get("RENDER_FPS", TL["fps"]))
+NFR = int(round(TOTAL * FPS))
 ML = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl"
 JQ = int(os.environ.get("JQ", "93"))
 CAST = ["BRA", "ARG", "BOL", "COL", "GUY", "PRY", "PER", "SUR", "URY", "VEN", "FRA", "CHL", "ECU"]
