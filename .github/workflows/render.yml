@@ -1,0 +1,95 @@
+name: render
+# Triggered by pushing to a branch named render/*  (the fine-grained PAT cannot call the Actions API)
+on:
+  push:
+    branches: ["render/**"]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "bench | full"
+        required: false
+        default: "bench"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: render-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      MODE: ${{ github.event.inputs.mode || 'bench' }}
+      BENCH_N1: "16"
+      BENCH_N2: "6"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright numpy pillow requests shapely
+          python -m playwright install chromium
+          echo "--- runner vs sandbox ---"; nproc; free -g | head -2; df -h . | tail -1
+
+      - name: assets (geoBoundaries + flagcdn + google fonts + World Bank)
+        run: python render/fetch_assets.py
+
+      - name: simplify polygons
+        run: python render/prep_geo.py
+
+      - name: bench — dark vector style (no tiles)
+        if: env.MODE == 'bench'
+        run: |
+          TILE=0 python render/bench.py || echo "BENCH_NOSAT_FAILED"
+          cp -f bench.json results_bench_nosat.json 2>/dev/null || true
+
+      - name: bench — with Esri satellite tiles
+        if: env.MODE == 'bench'
+        run: |
+          TILE=1 python render/bench.py || echo "BENCH_SAT_FAILED"
+          cp -f bench.json results_bench_sat.json 2>/dev/null || true
+
+      - name: summary
+        if: always()
+        run: |
+          { echo "### Render benchmark (runner: $(nproc) cores)"; echo '```json';
+            cat results_bench_nosat.json results_bench_sat.json 2>/dev/null | head -120; echo '```';
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: full render (frames -> mp4)
+        if: env.MODE == 'full'
+        run: python render/render_all.py || echo "FULL_RENDER_FAILED"
+
+      - name: publish results to render-out branch
+        if: always()
+        run: |
+          git config user.name render-bot
+          git config user.email render-bot@users.noreply.github.com
+          mkdir -p results
+          for f in bench.json results_bench_nosat.json results_bench_sat.json fetch_report.json out/*.mp4 out/*.json; do
+            [ -f "$f" ] && cp -f "$f" results/$(basename "$f"); done
+          echo "run=${{ github.run_id }} attempt=${{ github.run_attempt }} sha=${{ github.sha }}" > results/META.txt
+          date -u >> results/META.txt
+          git add -f results 2>/dev/null || true
+          git -c user.name=render-bot commit -m "results: ${{ github.run_id }}" >/dev/null 2>&1 || echo "NOTHING_TO_COMMIT"
+          git push origin HEAD:refs/heads/render-out && echo "PUSH_BACK_OK" || echo "PUSH_BACK_BLOCKED"
+
+      - name: artifact fallback
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-out-${{ github.run_number }}
+          path: |
+            results/
+            bench.json
+            out/
+          if-no-files-found: warn
+          retention-days: 3
