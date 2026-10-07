@@ -135,7 +135,7 @@ def bake(iso, img, kind, scenes, scene_ids=("3",)):
     W = 256 * (2 ** Z)
     ww = max(8, int(round(abs(x1 - x0) * W)))
     hh = max(8, int(round(abs(y0 - y1) * W)))     # mercator y grows downward: use abs
-    CAP = int(os.environ.get("BAKE_MAX_PX", "1180"))      # raster fill cost scales with texture area
+    CAP = int(os.environ.get("BAKE_MAX_PX", "900"))      # raster fill cost scales with texture area
     if max(ww, hh) > CAP:
         f = CAP / max(ww, hh); ww, hh = max(8, int(ww * f)), max(8, int(hh * f))
     src = Image.open(img).convert("RGB")
