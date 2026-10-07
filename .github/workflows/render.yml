@@ -85,8 +85,10 @@ jobs:
         if: always()
         run: |
           { echo "run=${{ github.run_id }} mode=$MODE sha=${{ github.sha }}"; date -u;
-            echo "--- seg reports ---"; cat out/seg_*.json 2>/dev/null | tr -d ' \n';
-            echo; echo "--- sizes ---"; du -sh assets out 2>/dev/null; ls -la out/preview 2>/dev/null; } > results.txt
+            echo "--- seg reports ---"; cat out/seg_*.json 2>/dev/null | tr -d ' \n'; echo;
+            echo "--- sizes ---"; du -sh assets out 2>/dev/null || true;
+            if [ -d out/preview ]; then echo "--- preview stills ---"; ls -la out/preview; fi
+            if [ -f out/render_report.json ]; then echo "--- render report ---"; cat out/render_report.json; fi; } > results.txt
           cat results.txt
 
       - name: artifact fallback
