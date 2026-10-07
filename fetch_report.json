@@ -1,0 +1,24 @@
+{
+ "secs": 10.4,
+ "assets_MB": 16.13,
+ "geo_countries": 13,
+ "geo_missing": [],
+ "flags": 13,
+ "fonts": 4,
+ "facts_keys": 10,
+ "geo_bytes": {
+  "BRA": 1952674,
+  "ARG": 70188,
+  "BOL": 4034693,
+  "COL": 32672,
+  "GUY": 24178,
+  "PRY": 1769943,
+  "PER": 81508,
+  "SUR": 191070,
+  "URY": 795651,
+  "VEN": 142028,
+  "FRA": 150371,
+  "CHL": 788824,
+  "ECU": 170839
+ }
+}

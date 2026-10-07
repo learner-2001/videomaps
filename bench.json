@@ -1,0 +1,37 @@
+{
+ "capture_mode": "screenshot",
+ "runner": {
+  "cores": 2,
+  "mem_total_MB": 1984
+ },
+ "target": {
+  "w": 1080,
+  "h": 1920,
+  "fps": 30,
+  "frames_60s": 1800
+ },
+ "args_ok": true,
+ "diag": {
+  "loaded": true,
+  "idle": true,
+  "tiles": 0,
+  "layers": 31,
+  "webgl2": true,
+  "errs": []
+ },
+ "console_err": [],
+ "frame_std": 65.8,
+ "blank": false,
+ "single_worker": {
+  "n": 8,
+  "ms_mean": 526.8,
+  "ms_median": 460.6,
+  "ms_p90": 1042.3,
+  "jpeg_KB_mean": 111.7,
+  "min_1800_frames": 15.8,
+  "gb_for_1800_jpegs": 0.2
+ },
+ "measurement_valid": true,
+ "tile_mode": 0,
+ "verdict": "MAPLIBRE_VIABLE"
+}

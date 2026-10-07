@@ -1,0 +1,102 @@
+name: render
+# mode comes from the branch name, because the fine-grained PAT cannot call the Actions API:
+#   render/bench   -> frame-rate benchmark
+#   render/preview -> 4 full-quality stills (approval gate)
+#   render/full    -> 1808 frames -> mp4
+on:
+  push:
+    branches: ["render/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: render-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      MODE: ${{ contains(github.ref_name, 'full') && 'full' || contains(github.ref_name, 'preview') && 'preview' || 'bench' }}
+      BENCH_N1: "16"
+      BENCH_N2: "6"
+      WORKERS: "3"
+      CHUNK: "252"
+      JQ: "93"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright numpy pillow requests shapely imageio-ffmpeg
+          python -m playwright install chromium
+          nproc; free -g | head -2; df -h . | tail -1
+
+      - name: assets (geoBoundaries + flagcdn + Wikimedia CC photos + fonts + World Bank)
+        run: |
+          python render/fetch_assets.py
+          python render/prep_geo.py
+          python render/bake.py
+
+      - name: audio -> timeline (voice drives every cut)
+        if: env.MODE != 'bench'
+        run: python render/build_audio.py
+
+      - name: bench
+        if: env.MODE == 'bench'
+        run: |
+          TILE=0 python render/bench.py || echo BENCH_NOSAT_FAILED
+          cp -f bench.json results_bench_nosat.json 2>/dev/null || true
+          TILE=1 python render/bench.py || echo BENCH_SAT_FAILED
+          cp -f bench.json results_bench_sat.json 2>/dev/null || true
+
+      - name: preview (4 frames, full quality)
+        if: env.MODE == 'preview'
+        run: python render/render_all.py --preview 3.5,17.0,30.0,45.5,57.5
+
+      - name: full render
+        if: env.MODE == 'full'
+        run: python render/render_all.py
+
+      - name: publish to render-out branch
+        if: always()
+        run: |
+          git config user.name render-bot
+          git config user.email render-bot@users.noreply.github.com
+          mkdir -p results/preview
+          for f in bench.json results_bench_nosat.json results_bench_sat.json fetch_report.json \
+                   audio/timeline.json out/preview/*.jpg out/*.mp4 out/render_report.json; do
+            if [ -f "$f" ]; then
+              case "$f" in
+                out/preview/*) cp -f "$f" results/preview/$(basename "$f");;
+                out/*.mp4)     cp -f "$f" results/$(basename "$f");;
+                *)             cp -f "$f" results/$(basename "$f");;
+              esac
+            fi
+          done
+          { echo "run=${{ github.run_id }} mode=$MODE sha=${{ github.sha }}"; date -u;
+            echo "--- seg reports ---"; cat out/seg_*.json 2>/dev/null | tr -d ' \n'; } > results/META.txt
+          du -sh assets out 2>/dev/null >> results/META.txt || true
+          git add -f results 2>/dev/null || true
+          git commit -m "results: $MODE run ${{ github.run_id }}" >/dev/null 2>&1 || echo NOTHING_TO_COMMIT
+          git push origin HEAD:refs/heads/render-out && echo PUSH_BACK_OK || echo PUSH_BACK_BLOCKED
+
+      - name: artifact fallback
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-${{ env.MODE }}-${{ github.run_number }}
+          path: |
+            results/
+            out/
+            bench.json
+          if-no-files-found: warn
+          retention-days: 3

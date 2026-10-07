@@ -1,0 +1,84 @@
+{
+ "fps": 30,
+ "sr": 48000,
+ "w": 1080,
+ "h": 1920,
+ "total": 60.259,
+ "frames": 1808,
+ "lead": 0.55,
+ "tail": 1.15,
+ "lines": [
+  {
+   "i": 1,
+   "start": 0.55,
+   "end": 5.983,
+   "dur": 5.433,
+   "text": "South America holds twelve independent nations. One of them is half the continent's economy.",
+   "reveal": 12
+  },
+  {
+   "i": 2,
+   "start": 6.112,
+   "end": 12.732,
+   "dur": 6.62,
+   "text": "This is Brazil: eight point four million square kilometres. The fifth largest country on Earth.",
+   "reveal": 8.4
+  },
+  {
+   "i": 3,
+   "start": 12.862,
+   "end": 22.448,
+   "dur": 9.586,
+   "text": "It touches ten neighbours. Every South American country except Chile and Ecuador. Plus France, which still keeps a slice of Amazonian coastline.",
+   "reveal": 10
+  },
+  {
+   "i": 4,
+   "start": 22.577,
+   "end": 26.183,
+   "dur": 3.605,
+   "text": "Forty percent of everything Brazil sells abroad is food.",
+   "reveal": 40
+  },
+  {
+   "i": 5,
+   "start": 26.312,
+   "end": 33.171,
+   "dur": 6.859,
+   "text": "Fifty-eight percent of the world's exported soybeans. Three quarters of its orange juice. Nearly half of its sugar.",
+   "reveal": 58
+  },
+  {
+   "i": 6,
+   "start": 33.3,
+   "end": 41.592,
+   "dur": 8.292,
+   "text": "Yet crops cover just seven percent of the national territory. India plants on fifty-two. France on thirty-one.",
+   "reveal": 7
+  },
+  {
+   "i": 7,
+   "start": 41.721,
+   "end": 50.816,
+   "dur": 9.095,
+   "text": "The rest stays wild. Fifty-nine percent of Brazil is forest, and the Amazon carries more water to the sea than any river alive.",
+   "reveal": 59
+  },
+  {
+   "i": 8,
+   "start": 50.945,
+   "end": 55.137,
+   "dur": 4.192,
+   "text": "Two hundred and twelve million people. Eighty-eight percent of them in cities.",
+   "reveal": 212
+  },
+  {
+   "i": 9,
+   "start": 55.266,
+   "end": 59.4,
+   "dur": 4.134,
+   "text": "Brazil doesn't just occupy a continent. It supplies one.",
+   "reveal": null
+  }
+ ]
+}
