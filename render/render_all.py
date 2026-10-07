@@ -16,6 +16,8 @@ W, H, TOTAL = TL["w"], TL["h"], TL["total"]
 # camera moves are slow enough that 24 fps looks identical here) - measured, not assumed:
 # the CI probe showed ~1.25 s/frame at DSF 0.6, so frames are the whole budget.
 FPS = float(os.environ.get("RENDER_FPS", TL["fps"]))
+# VIDEO_FPS > FPS duplicates each rendered frame at encode time: motion gets steppy, cost halves.
+VIDEO_FPS = float(os.environ.get("VIDEO_FPS", TL["fps"]))
 NFR = int(round(TOTAL * FPS))
 ML = "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl"
 JQ = int(os.environ.get("JQ", "93"))
@@ -366,7 +368,12 @@ def worker(slot, a, b, url, q):
         br.close()
     seg = os.path.join(OUT, f"seg_{slot:02d}.mp4")
     dsf = float(os.environ.get("DSF", "1"))
-    vf = [] if dsf >= 0.999 else ["-vf", f"scale={W}:{H}:flags=lanczos"]
+    flt = []
+    if dsf < 0.999:
+        flt.append(f"scale={W}:{H}:flags=lanczos")
+    if abs(VIDEO_FPS - FPS) > 0.01:
+        flt.append(f"fps={VIDEO_FPS:g}")          # duplicate rendered frames up to the output rate
+    vf = [] if not flt else ["-vf", ",".join(flt)]
     subprocess.run([ff(), "-hide_banner", "-loglevel", "error", "-y", "-framerate", str(FPS),
                     "-start_number", str(a), "-i", os.path.join(fdir, "f%05d.jpg"), *vf,
                     "-c:v", "libx264", "-preset", os.environ.get("PRESET", "veryfast"),
