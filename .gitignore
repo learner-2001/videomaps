@@ -1,7 +1,9 @@
 assets/
-_bench_*
-*.jpg
-__pycache__/
 out/
 results/
+_bench_*
+*.jpg
+*.png
+*.wav
+__pycache__/
 node_modules/

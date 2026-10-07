@@ -69,25 +69,24 @@ jobs:
       - name: publish to render-out branch
         if: always()
         run: |
-          git config user.name render-bot
-          git config user.email render-bot@users.noreply.github.com
-          mkdir -p results/preview
-          for f in bench.json results_bench_nosat.json results_bench_sat.json fetch_report.json \
-                   audio/timeline.json out/preview/*.jpg out/*.mp4 out/render_report.json; do
-            if [ -f "$f" ]; then
-              case "$f" in
-                out/preview/*) cp -f "$f" results/preview/$(basename "$f");;
-                out/*.mp4)     cp -f "$f" results/$(basename "$f");;
-                *)             cp -f "$f" results/$(basename "$f");;
-              esac
-            fi
-          done
+          set -e
+          STAGE=/tmp/res
+          rm -rf $STAGE && mkdir -p $STAGE && cd $STAGE
+          git init -q -b res
+          mkdir -p results
+          cp -r "$GITHUB_WORKSPACE/results/." results/ 2>/dev/null || true
           { echo "run=${{ github.run_id }} mode=$MODE sha=${{ github.sha }}"; date -u;
-            echo "--- seg reports ---"; cat out/seg_*.json 2>/dev/null | tr -d ' \n'; } > results/META.txt
-          du -sh assets out 2>/dev/null >> results/META.txt || true
-          git add -f results 2>/dev/null || true
-          git commit -m "results: $MODE run ${{ github.run_id }}" >/dev/null 2>&1 || echo NOTHING_TO_COMMIT
-          git push origin HEAD:refs/heads/render-out && echo PUSH_BACK_OK || echo PUSH_BACK_BLOCKED
+            echo "--- files ---"; cd "$GITHUB_WORKSPACE" && ls -la results results/preview 2>/dev/null;
+            echo "--- seg reports ---"; cat out/seg_*.json 2>/dev/null | tr -d ' \n'; } > $STAGE/results/META.txt
+          du -sh assets out results 2>/dev/null >> $STAGE/results/META.txt || true
+          cd $STAGE
+          LIST=$(cd "$GITHUB_WORKSPACE" && find results -type f | wc -l)
+          BYTES=$(cd "$GITHUB_WORKSPACE" && du -sb results 2>/dev/null | cut -f1)
+          git add -A
+          git -c user.name=render-bot -c user.email=render-bot@users.noreply.github.com \
+            commit -qm "results: $MODE run ${{ github.run_id }} files=$LIST bytes=$BYTES"
+          PURL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push -f -q "$PURL" HEAD:refs/heads/render-out && echo "PUSH_BACK_OK files=$LIST" || echo "PUSH_BACK_BLOCKED"
 
       - name: artifact fallback
         if: always()
