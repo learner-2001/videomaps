@@ -22,6 +22,18 @@ ARGS = ["--no-sandbox", "--use-gl=angle", "--use-angle=swiftshader", "--enable-u
         "--force-color-profile=srgb", "--js-flags=--expose-gc"]
 
 
+def serve(root_dir):
+    """MapLibre image sources are fetched with XHR, which Chromium blocks on file:// pages.
+    A localhost static server is the smallest fix that keeps everything else identical."""
+    import http.server, socketserver, functools, threading
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=root_dir)
+    class Q(socketserver.ThreadingTCPServer):
+        allow_reuse_address, daemon_threads = True, True
+    srv = Q(("127.0.0.1", 0), handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, f"http://127.0.0.1:{srv.server_address[1]}"
+
+
 def ff():
     try:
         import imageio_ffmpeg
@@ -91,7 +103,8 @@ def scenes():
             box = [br[0], br[3] - 12, br[2], br[3] + 2]           # hold on the Amazon basin
         c, z = cam_for(box)
         per[ln["i"]] = dict(i=ln["i"], start=ln["start"], end=ln["end"], text=ln["text"],
-                            c=c, z=z, title=title, note=note, big=big, unit=unit, sub=sub,
+                            c=c, z=z, title=(title or "").replace("<br>", "\n"), note=note,
+                            big=big, unit=unit, sub=sub,
                             count=big is not None and ln.get("reveal") is not None)
     out = [per[ln["i"]] for ln in TL["lines"]]
     for k, s in enumerate(out):
@@ -152,7 +165,7 @@ const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
 const errs = [];
 const map = new maplibregl.Map({container:'map', style:C.style, antialias:true, attributionControl:false,
   renderWorldCopies:false, fadeDuration:0, optimizeForTerrain:false, interactive:false});
-map.on('error', e => errs.push(String((e && e.error && e.error.message) || e)));
+map.on('error', e => errs.push(((e && e.error && (e.error.message || e.error.text)) || (e && e.message) || JSON.stringify(e)).slice(0,160)));
 map.on('load', () => { window.__loaded = true; });
 window.diag = () => ({loaded: !!window.__loaded, errs: errs.slice(0,3),
                       layers: map.getStyle().layers.length, srcs: Object.keys(map.getStyle().sources).length});
@@ -167,10 +180,12 @@ function fit(el, txt, maxpx, minpx){
 }
 function numStr(s, k){
   if (s.big === null || s.big === undefined) return '';
-  if (!s.count) return s.big + (s.unit ? ' ' + s.unit : '');
+  if (!s.count) return s.big + (s.unit ? '\u2009' + s.unit : '');
   const v = parseFloat(s.big) * k;
   const dec = parseFloat(s.big) % 1 ? 1 : 0;
-  return v.toFixed(dec).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (s.unit && s.unit.length < 6 ? ' ' + s.unit : '');
+  const num = v.toFixed(dec).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  const unit = (s.unit || '').trim();
+  return unit === '%' ? num + '%' : num + (unit.length <= 6 ? '\u2009' + unit : '');
 }
 window.seek = (t) => new Promise(res => {
   let i = 0; for (let j = SCN.length - 1; j >= 0; j--) if (t >= SCN[j].start) { i = j; break; }
@@ -191,7 +206,7 @@ window.seek = (t) => new Promise(res => {
                                                 'LAND USE','NATURE','PEOPLE','BRAZIL'][i] || '';
   fit(document.getElementById('card'), s.title, 58, 30);
   fit(document.getElementById('num'), numStr(s, rev), 206, 70);
-  fit(document.getElementById('sub'), local > 0.34 ? (s.unit && s.count ? s.big + s.unit.replace(/[^\s]/g,'').trim() + ' ' + (s.note||'') : s.note) : '', 40, 22);
+  fit(document.getElementById('sub'), local > 0.34 ? (s.note || '') : '', 40, 22);
   fit(document.getElementById('kick'), local > 0.5 ? (s.sub || '') : '', 30, 16);
   fit(document.getElementById('cap'), s.text, 36, 20);
   document.getElementById('bar').style.width = (100 * t / TOTAL).toFixed(2) + '%';
@@ -215,13 +230,13 @@ HTML = """<!doctype html><html><head><meta charset="utf-8">
 <script>{js}</script></body></html>"""
 
 
-def build_page():
+def build_page(base=""):
     style, laymap = style_and_layers()
     css = open(os.path.join(ROOT, "render", "page.css")).read()
     css = (css.replace("VWpx", f"{W}px").replace("VHpx", f"{H}px")
-              .replace("FONTARCH", "file://" + os.path.join(A, "fonts", "ArchivoBlack-Regular.ttf"))
-              .replace("FONTBARLOW", "file://" + os.path.join(A, "fonts", "BarlowCondensed-Black.ttf"))
-              .replace("FONTJET", "file://" + os.path.join(A, "fonts", "JetBrainsMono.ttf")))
+              .replace("FONTARCH", f"{base}assets/fonts/ArchivoBlack-Regular.ttf")
+              .replace("FONTBARLOW", f"{base}assets/fonts/BarlowCondensed-Black.ttf")
+              .replace("FONTJET", f"{base}assets/fonts/JetBrainsMono.ttf"))
     cfg = {"style": style, "layers": laymap, "scenes": scenes(), "total": TOTAL, "fps": FPS,
            "w": W, "h": H}
     os.makedirs(OUT, exist_ok=True)
@@ -248,7 +263,9 @@ def shot(pg, t, path):
 
 def preview(times):
     from playwright.sync_api import sync_playwright
-    url = "file://" + build_page()
+    srv, base = serve(ROOT)
+    url = base + "/out/index.html"
+    build_page(base=base + "/")
     d = os.path.join(OUT, "preview")
     os.makedirs(d, exist_ok=True)
     with sync_playwright() as p:
@@ -262,8 +279,15 @@ def preview(times):
             from PIL import Image as _I
             im = np.asarray(_I.open(f).convert("L"))
             print(f"  t={t:6.2f}s -> {os.path.basename(f)} {os.path.getsize(f)/1024:6.1f}KB  std={im.std():.1f}")
-        print(f"[preview] {len(times)} frames in {time.time()-t0:.1f}s | pageerrors={err[:2]}")
-        br.close()
+        # timing pass: steady-state ms/frame with the real style in memory
+        ts=[]
+        for n in range(12):
+            s0=time.time(); pg.evaluate(f"window.seek({3+n*0.9})")
+            pg.screenshot(path="/tmp/_t.jpg", type="jpeg", quality=JQ); ts.append((time.time()-s0)*1000)
+        print(f"[preview] {len(times)} frames in {time.time()-t0:.1f}s | steady {np.mean(ts):.0f}ms/frame "
+              f"| est {np.mean(ts)*NFR/60000:.1f} min for {NFR} on 1 worker")
+        print("[preview] map errors:", json.dumps(pg.evaluate("()=>window.diag()")["errs"])[:400])
+        br.close(); srv.shutdown()
 
 
 def worker(slot, a, b, url, q):
@@ -319,7 +343,9 @@ RELOAD_EVERY = int(os.environ.get("RELOAD_EVERY", "400"))
 
 def full():
     import multiprocessing as mp
-    url = "file://" + build_page()
+    srv, base = serve(ROOT)
+    url = base + "/out/index.html"
+    build_page(base=base + "/")
     os.makedirs(OUT, exist_ok=True)
     segs = sorted(os.path.join(OUT, f) for f in os.listdir(OUT) if f.startswith("seg_") and f.endswith(".mp4"))
     done = len(segs) * int(os.environ.get("CHUNK", "300"))
@@ -349,7 +375,8 @@ def full():
     mb = round(os.path.getsize(out) / 1e6, 1)
     json.dump({"frames": NFR, "secs": secs, "mb": mb, "segments": len(jobs), "out": os.path.basename(out)},
               open(os.path.join(OUT, "render_report.json"), "w"), indent=1)
-    print(f"[render] DONE {out.name if False else os.path.basename(out)} {mb}MB in {secs/60:.1f} min")
+    srv.shutdown()
+    print(f"[render] DONE {os.path.basename(out)} {mb}MB in {secs/60:.1f} min")
     print("  " + [l.strip() for l in info.splitlines() if "Duration" in l or "Video:" in l][0])
 
 

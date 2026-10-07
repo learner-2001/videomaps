@@ -153,7 +153,12 @@ def bake(iso, img, kind, scenes, scene_ids=("3",)):
     elif kind == "flag":
         out.putalpha(Image.eval(m, lambda v: int(v * 0.92)))
     p = os.path.join(OUT, f"{iso}_{kind}.png")
-    out.save(p, optimize=True)
+    # 256-colour quantisation keeps the alpha mask and cuts 4 MB -> ~400 KB per overlay
+    try:
+        q = out.quantize(colors=255, method=2, dither=0)
+        q.save(p, optimize=True)
+    except Exception:
+        out.save(p, optimize=True)
     rec = {"iso": iso, "kind": kind, "file": os.path.basename(p), "wh": [ww, hh],
            "bbox_lonlat": [round(w0, 3), round(s0, 3), round(e0, 3), round(n0, 3)],
            "center": [round((w0 + e0) / 2, 3), round((s0 + n0) / 2, 3)],

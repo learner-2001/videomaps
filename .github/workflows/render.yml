@@ -66,29 +66,13 @@ jobs:
         if: env.MODE == 'full'
         run: python render/render_all.py
 
-      - name: publish to render-out branch
+      - name: results manifest
         if: always()
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -e
-          STAGE=/tmp/res
-          rm -rf $STAGE && mkdir -p $STAGE && cd $STAGE
-          git init -q -b res
-          mkdir -p results
-          cp -r "$GITHUB_WORKSPACE/results/." results/ 2>/dev/null || true
           { echo "run=${{ github.run_id }} mode=$MODE sha=${{ github.sha }}"; date -u;
-            echo "--- files ---"; cd "$GITHUB_WORKSPACE" && ls -la results results/preview 2>/dev/null;
-            echo "--- seg reports ---"; cat out/seg_*.json 2>/dev/null | tr -d ' \n'; } > $STAGE/results/META.txt
-          du -sh assets out results 2>/dev/null >> $STAGE/results/META.txt || true
-          cd $STAGE
-          LIST=$(cd "$GITHUB_WORKSPACE" && find results -type f | wc -l)
-          BYTES=$(cd "$GITHUB_WORKSPACE" && du -sb results 2>/dev/null | cut -f1)
-          git add -A
-          git -c user.name=render-bot -c user.email=render-bot@users.noreply.github.com \
-            commit -qm "results: $MODE run ${{ github.run_id }} files=$LIST bytes=$BYTES"
-          PURL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push -f -q "$PURL" HEAD:refs/heads/render-out && echo "PUSH_BACK_OK files=$LIST" || echo "PUSH_BACK_BLOCKED"
+            echo "--- seg reports ---"; cat out/seg_*.json 2>/dev/null | tr -d ' \n';
+            echo; echo "--- sizes ---"; du -sh assets out 2>/dev/null; ls -la out/preview 2>/dev/null; } > results.txt
+          cat results.txt
 
       - name: artifact fallback
         if: always()
@@ -96,8 +80,9 @@ jobs:
         with:
           name: render-${{ env.MODE }}-${{ github.run_number }}
           path: |
-            results/
+            results.txt
             out/
             bench.json
+            audio/timeline.json
           if-no-files-found: warn
           retention-days: 3
