@@ -1,0 +1,43 @@
+{
+ "runner": {
+  "cores": 4,
+  "mem_total_MB": 15989
+ },
+ "target": {
+  "w": 1080,
+  "h": 1920,
+  "fps": 30,
+  "frames_60s": 1800
+ },
+ "args_ok": true,
+ "diag": {
+  "loaded": true,
+  "idle": true,
+  "tiles": 32,
+  "layers": 32,
+  "webgl2": true,
+  "errs": []
+ },
+ "console_err": [],
+ "frame_std": 72.0,
+ "blank": false,
+ "single_worker": {
+  "n": 16,
+  "ms_mean": 1579.7,
+  "ms_median": 463.3,
+  "ms_p90": 7024.7,
+  "jpeg_KB_mean": 372.3,
+  "min_1800_frames": 47.4,
+  "gb_for_1800_jpegs": 0.67
+ },
+ "dual_worker": {
+  "n": 12,
+  "ms_mean": 2127.4,
+  "wall_s": 25.5,
+  "min_1800_frames": 63.8,
+  "gb_for_1800_jpegs": 0.11
+ },
+ "measurement_valid": true,
+ "tile_mode": 1,
+ "verdict": "MAPLIBRE_VIABLE"
+}
