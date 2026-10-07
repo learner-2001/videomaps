@@ -125,7 +125,11 @@ def style_and_layers():
         if not g:
             continue
         geoms[iso] = g
-        srcs[f"g-{iso}"] = {"type": "geojson", "data": g}
+        # tolerance/maxzoom: without them MapLibre re-tessellates every GeoJSON source on
+        # every zoom step of the camera move, which dominates the per-frame cost.
+        srcs[f"g-{iso}"] = {"type": "geojson", "data": g,
+                            "tolerance": 0.05 if iso == "BRA" else 0.30,
+                            "maxzoom": int(os.environ.get("SRC_MAXZOOM", "10"))}
     for iso in CAST:
         if iso not in geoms:
             continue
@@ -433,11 +437,52 @@ def worker_run(job):
     return os.path.join(OUT, f"seg_{slot:02d}.mp4")
 
 
+def probe(n):
+    """Render N consecutive frames of the production page and report the honest per-frame cost,
+    so launching the full render is a measurement rather than a guess."""
+    dsf = float(os.environ.get("DSF", "1"))
+    srv, base = serve(ROOT)
+    build_page(base=base + "/")
+    from playwright.sync_api import sync_playwright
+    tot = float(timeline()["total"])
+    ts, m = [], n + 6
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=ARGS)
+        ctx, pg, err = new_page(br, base + "/out/index.html", dsf=dsf)
+        for k in range(m):
+            t = 3.0 + k * (tot - 6.0) / m
+            s0 = time.time(); shot(pg, t, "/tmp/_p.jpg")
+            if k >= 6:
+                ts.append((time.time() - s0) * 1000)
+        diag = pg.evaluate("()=>window.diag()")
+        br.close()
+    srv.shutdown()
+    ts = np.array(ts); per = float(np.mean(ts))
+    frames = int(round(tot * FPS))
+    print(f"[probe] dsf={dsf} n={len(ts)} mean={per:.0f}ms p50={np.median(ts):.0f}ms "
+          f"p95={np.percentile(ts,95):.0f}ms | frames={frames} layers={diag['layers']} "
+          f"srcs={diag['srcs']} errs={len(diag['errs'])}", flush=True)
+    for w in (1, 2, 3, 4, 6):
+        print(f"[probe] workers={w}: {frames/w*per/1000/60:5.1f} min render (+ ~4 min setup/encode)", flush=True)
+    for d in (1.0, 0.6, 0.45):
+        print(f"[probe] DSF {d} -> est {per/1000*frames/4/60*d*d:5.1f} min on 4 workers "
+              f"(cost ~ resolution^2)", flush=True)
+    if diag["errs"]:
+        print("[probe] map errors:", json.dumps(diag["errs"][:3]), flush=True)
+    os.makedirs(OUT, exist_ok=True)
+    json.dump({"dsf": dsf, "mean_ms": per, "p50_ms": float(np.median(ts)),
+               "p95_ms": float(np.percentile(ts, 95)), "frames": frames,
+               "eta_min_4w": frames/4*per/1000/60}, open(os.path.join(OUT, "probe.json"), "w"), indent=1)
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--preview", default="", help="comma list of times in seconds")
+    ap.add_argument("--probe", default=0, type=int, help="render N frames, report ms/frame + ETA")
     a = ap.parse_args()
-    if a.preview:
+    if a.probe:
+        probe(a.probe)
+    elif a.preview:
         preview([float(x) for x in a.preview.split(",")])
     else:
         full()
