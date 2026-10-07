@@ -135,8 +135,9 @@ def bake(iso, img, kind, scenes, scene_ids=("3",)):
     W = 256 * (2 ** Z)
     ww = max(8, int(round(abs(x1 - x0) * W)))
     hh = max(8, int(round(abs(y0 - y1) * W)))     # mercator y grows downward: use abs
-    if ww * hh > 24_000_000:                 # keep VRAM/encode sane
-        f = math.sqrt(24_000_000 / (ww * hh)); ww, hh = int(ww * f), int(hh * f)
+    CAP = int(os.environ.get("BAKE_MAX_PX", "1180"))      # raster fill cost scales with texture area
+    if max(ww, hh) > CAP:
+        f = CAP / max(ww, hh); ww, hh = max(8, int(ww * f)), max(8, int(hh * f))
     src = Image.open(img).convert("RGB")
     scale = max(ww / src.width, hh / src.height)
     src = src.resize((int(src.width * scale) + 1, int(src.height * scale) + 1), Image.LANCZOS)

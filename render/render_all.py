@@ -135,7 +135,7 @@ def style_and_layers():
     for iso in CAST:
         if iso not in geoms:
             continue
-        for wdt, op in ((1.3, 0.9), (5, 0.20), (12, 0.09)):
+        for wdt, op in ((1.3, 0.92), (7, 0.16)):   # 2 glow passes, not 3
             lays.append({"id": f"gl{wdt}-{iso}", "type": "line", "source": f"g-{iso}",
                          "paint": {"line-color": "#7dffb9" if iso == "BRA" else "#5aa2ff",
                                    "line-width": wdt, "line-opacity": op}})
@@ -171,14 +171,19 @@ map.on('error', e => errs.push(((e && e.error && (e.error.message || e.error.tex
 map.on('load', () => { window.__loaded = true; });
 window.diag = () => ({loaded: !!window.__loaded, errs: errs.slice(0,3),
                       layers: map.getStyle().layers.length, srcs: Object.keys(map.getStyle().sources).length});
+const _fitCache = new Map();
 function fit(el, txt, maxpx, minpx){
-  el.textContent = txt || '';
+  txt = txt || '';
+  const key = el.id;
+  if (_fitCache.get(key) === txt) return;          // same string -> same layout: skip all measuring
+  _fitCache.set(key, txt);
+  el.textContent = txt;
   if (!txt) { el.style.display='none'; return; }
   el.style.display=''; el.style.fontSize = maxpx + 'px';
   let g = 0;
   while ((el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)
-         && parseFloat(el.style.fontSize) > minpx && g++ < 60)
-    el.style.fontSize = (parseFloat(el.style.fontSize) - 2) + 'px';
+         && parseFloat(el.style.fontSize) > minpx && g++ < 14)
+    el.style.fontSize = (parseFloat(el.style.fontSize) - 4) + 'px';
 }
 function numStr(s, k){
   if (s.big === null || s.big === undefined) return '';
@@ -209,7 +214,8 @@ window.seek = (t) => new Promise(res => {
   document.getElementById('tag').textContent = ['GEOGRAPHY','SIZE','BORDERS','TRADE','AGRICULTURE',
                                                 'LAND USE','NATURE','PEOPLE','BRAZIL'][i] || '';
   fit(document.getElementById('card'), s.title, 58, 30);
-  fit(document.getElementById('num'), numStr(s, rev), 206, 70);
+  const numEl = document.getElementById('num'), nv = numStr(s, rev);
+  if (numEl.textContent !== nv) numEl.textContent = nv;
   fit(document.getElementById('sub'), local > 0.34 ? (s.note || '') : '', 40, 22);
   fit(document.getElementById('kick'), local > 0.5 ? (s.sub || '') : '', 30, 16);
   fit(document.getElementById('cap'), s.text, 36, 20);
@@ -249,8 +255,9 @@ def build_page(base=""):
     return p
 
 
-def new_page(br, url):
-    ctx = br.new_context(viewport={"width": W, "height": H}, device_scale_factor=1)
+def new_page(br, url, dsf=None):
+    dsf = dsf if dsf is not None else float(os.environ.get("DSF", "1"))
+    ctx = br.new_context(viewport={"width": W, "height": H}, device_scale_factor=dsf)
     pg = ctx.new_page()
     err = []
     pg.on("pageerror", lambda e: err.append(str(e)[:160]))
@@ -294,6 +301,27 @@ def preview(times):
         br.close(); srv.shutdown()
 
 
+def calibrate(url):
+    """Render 14 frames; if a frame costs more than CAL_MAX ms, drop to 720x1280 with a
+    Lanczos upscale at encode time. A finished 1080p-looking video beats a cancelled run."""
+    from playwright.sync_api import sync_playwright
+    t0 = time.time()
+    with sync_playwright() as p:
+        br = p.chromium.launch(args=ARGS)
+        ctx, pg, err = new_page(br, url, dsf=float(os.environ.get("DSF", "1")))
+        ts = []
+        for n in range(14):
+            s0 = time.time()
+            shot(pg, 2.0 + n * 1.3, "/tmp/_cal.jpg")
+            ts.append((time.time() - s0) * 1000)
+        diag = pg.evaluate("()=>window.diag()")
+        br.close()
+    warm = float(np.mean(ts[:4])); steady = float(np.mean(ts[5:]))
+    print(f"[calib] mean {np.mean(ts):.0f}ms  first4 {warm:.0f}ms  steady {steady:.0f}ms  "
+          f"({time.time()-t0:.1f}s wall) layers={diag['layers']} errs={len(diag['errs'])}", flush=True)
+    return steady
+
+
 def worker(slot, a, b, url, q):
     """render frames [a,b) of this slot, encode a segment, delete the frames."""
     from playwright.sync_api import sync_playwright
@@ -329,9 +357,11 @@ def worker(slot, a, b, url, q):
                 print(f"  [w{slot}] {state['done']}/{b-a} frames  mean {np.mean(state['ms']):.0f}ms", flush=True)
         br.close()
     seg = os.path.join(OUT, f"seg_{slot:02d}.mp4")
+    dsf = float(os.environ.get("DSF", "1"))
+    vf = [] if dsf >= 0.999 else ["-vf", f"scale={W}:{H}:flags=lanczos"]
     subprocess.run([ff(), "-hide_banner", "-loglevel", "error", "-y", "-framerate", str(FPS),
-                    "-start_number", str(a), "-i", os.path.join(fdir, "f%05d.jpg"),
-                    "-c:v", "libx264", "-preset", os.environ.get("PRESET", "medium"),
+                    "-start_number", str(a), "-i", os.path.join(fdir, "f%05d.jpg"), *vf,
+                    "-c:v", "libx264", "-preset", os.environ.get("PRESET", "veryfast"),
                     "-crf", os.environ.get("CRF", "18"), "-pix_fmt", "yuv420p", seg], check=True)
     shutil.rmtree(fdir, ignore_errors=True)
     ms = state["ms"]
@@ -353,14 +383,23 @@ def full():
     os.makedirs(OUT, exist_ok=True)
     segs = sorted(os.path.join(OUT, f) for f in os.listdir(OUT) if f.startswith("seg_") and f.endswith(".mp4"))
     done = len(segs) * int(os.environ.get("CHUNK", "300"))
-    n = mp.cpu_count() if os.environ.get("WORKERS") == "auto" else int(os.environ.get("WORKERS", "3"))
+    n = mp.cpu_count() if os.environ.get("WORKERS") == "auto" else int(os.environ.get("WORKERS", "4"))
     per = int(os.environ.get("CHUNK", "300"))
     jobs, slot = [], 0
     for a in range(0, NFR, per):
         jobs.append((slot, a, min(a + per, NFR), url, int(os.environ.get("JQ", "93"))))
         slot += 1
     t0 = time.time()
-    print(f"[render] {NFR} frames @ {W}x{H} · {len(jobs)} segments · {n} workers"
+    if os.environ.get("CALIBRATE", "1") == "1":
+        steady = calibrate(url)
+        if steady > float(os.environ.get("CAL_MAX", "1150")):
+            os.environ["DSF"] = "0.667"
+            print(f"[render] calibration: {steady:.0f}ms/frame -> switching to 720x1280 + Lanczos upscale",
+                  flush=True)
+        else:
+            os.environ["DSF"] = "1"
+            print(f"[render] calibration: {steady:.0f}ms/frame -> keeping full {W}x{H}", flush=True)
+    print(f"[render] {NFR} frames @ {W}x{H} dsf={os.environ.get('DSF','1')} · {len(jobs)} segments · {n} workers"
           f"{' (resume: ' + str(done) + ' frames already encoded)' if done else ''}")
     with mp.get_context("spawn").Pool(n) as pool:
         for r in pool.imap_unordered(worker_run, jobs):
@@ -386,6 +425,7 @@ def full():
 
 def worker_run(job):
     slot, a, b, url, q = job
+    os.environ["DSF"] = os.environ.get("DSF", "1")
     try:
         worker(slot, a, b, url, q)
     except Exception as e:
