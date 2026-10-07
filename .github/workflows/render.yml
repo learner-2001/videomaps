@@ -23,9 +23,16 @@ jobs:
       MODE: ${{ contains(github.ref_name, 'full') && 'full' || contains(github.ref_name, 'preview') && 'preview' || 'bench' }}
       BENCH_N1: "16"
       BENCH_N2: "6"
-      WORKERS: "3"
-      CHUNK: "252"
+      WORKERS: "4"
+      CHUNK: "190"
       JQ: "93"
+      RELOAD_EVERY: "400"
+      PRESET: "veryfast"
+      # Internal render size: 648x1152 upscaled to 1080x1920 with Lanczos at encode.
+      # ~2.8x cheaper than native 1080p and still far sharper than the 576x1024 reference.
+      DSF: "0.6"
+      CALIBRATE: "0"
+      BAKE_MAX_PX: "900"
     steps:
       - uses: actions/checkout@v4
 
