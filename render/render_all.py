@@ -444,7 +444,7 @@ def probe(n):
     srv, base = serve(ROOT)
     build_page(base=base + "/")
     from playwright.sync_api import sync_playwright
-    tot = float(timeline()["total"])
+    tot = float(TOTAL)
     ts, m = [], n + 6
     with sync_playwright() as pw:
         br = pw.chromium.launch(args=ARGS)
